@@ -1,16 +1,24 @@
 #!/bin/bash
 # Proxmox no-subsscription hack
+set -euo pipefail
+
 filename=/usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js
-cat ${filename} | grep "checked_command: function(orig_cmd) { orig_cmd(); }," > /dev/null
-if [ $? -gt 0 ]; then
-    first_line=$(cat ${filename}  | grep -n -m1 checked_command | cut -d ':' -f1)
-    last_line=$(( $(tail -n "+${first_line}" ${filename} | grep -xnm1 '    },' | cut -d':' -f1) + $first_line ))
-    sed -i ${first_line},${last_line}d ${filename}
-    insert_line=$(( ${first_line} - 1 ))
-    ex ${filename} <<eof
+
+# Finde die erste Zeile mit checked_command
+first_line=$(grep -n -m1 'checked_command' "$filename" | cut -d':' -f1)
+# Hole die Einrückung der Startzeile
+indent=$(sed -n "${first_line}p" "$filename" | grep -o '^[[:space:]]*')
+# Suche ab first_line die erste Zeile, die mit identischer Einrückung und '},' endet
+last_line=$(( $(tail -n "+${first_line}" "$filename" | grep -nxm1 "^${indent}},$" | cut -d':' -f1) + first_line - 1 ))
+
+# Entferne den Block
+sed -i "${first_line},${last_line}d" "$filename"
+
+# Füge die neue checked_command-Funktion an der richtigen Stelle ein
+insert_line=$(( first_line - 1 ))
+ex "$filename" <<eof
 ${insert_line} insert
-    checked_command: function(orig_cmd) { orig_cmd(); },
+${indent}checked_command: function(orig_cmd) { orig_cmd(); },
 .
 xit
 eof
-fi
